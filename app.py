@@ -12,7 +12,7 @@ API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MONGO_URI = os.environ["MONGO_URI"]
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 0))
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 0))  # ✅ Your target channel ID
 
 # Telegram bot
 bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -50,7 +50,7 @@ def serve(slug):
 def generate_slug(file_id):
     return hashlib.md5(file_id.encode()).hexdigest()[:6]
 
-# ✅ Handles videos from monitored channels
+# ✅ Handle new video in channel
 @bot.on_message(filters.video & filters.channel)
 async def handle_video(client: Client, message: Message):
     chat_id = message.chat.id
@@ -76,37 +76,26 @@ async def handle_video(client: Client, message: Message):
     await client.send_video(chat_id=chat_id, video=file_id, caption=new_caption)
     print(f"✅ Video processed and posted with link: {redirect_link}")
 
-# ✅ Handle /index command (only from allowed channel)
-@bot.on_message(filters.command("index") & filters.channel)
-async def index_channel(client: Client, message: Message):
-    chat_id = message.chat.id
-    print(f"📥 Received /index in channel: {chat_id}")
+# ✅ Bot start + send connection message
+async def run_bot():
+    await bot.start()
+    print("✅ Bot started")
 
-    if chat_id != CHANNEL_ID:
-        print(f"❌ Unauthorized /index command from {chat_id}")
-        return
+    # ✅ Send startup message
+    try:
+        await bot.send_message(CHANNEL_ID, "🤖 Bot has connected and is ready!")
+        print(f"✅ Connected message sent to {CHANNEL_ID}")
+    except Exception as e:
+        print(f"❌ Failed to send startup message: {e}")
 
-    if not indexed.find_one({"chat_id": chat_id}):
-        indexed.insert_one({"chat_id": chat_id})
-        await message.reply_text("✅ Channel has been indexed for video monitoring.")
-        print(f"✅ Channel {chat_id} indexed")
-    else:
-        await message.reply_text("ℹ️ This channel is already being monitored.")
-        print(f"ℹ️ Channel {chat_id} already indexed")
+    await bot.idle()
 
-# ✅ Run bot in background
+# ✅ Start bot in background thread
 def start_bot():
-    async def runner():
-        await bot.start()
-        me = await bot.get_me()
-        print(f"✅ Bot started")
-        print(f"🔐 Auth completed as: @{me.username} ({me.id})")
-        await bot.idle()
+    asyncio.run(run_bot())
 
-    asyncio.run(runner())
-
-# ✅ Start everything
+# ✅ Launch
 if __name__ == "__main__":
-    print("🚀 Starting bot and server...")
+    print("🚀 Starting bot...")
     threading.Thread(target=start_bot).start()
     web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
