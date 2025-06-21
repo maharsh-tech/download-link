@@ -76,18 +76,13 @@ async def handle_video(client, message):
 
 # 🟦 Index Command
 @bot.on_message(filters.command("index") & filters.channel)
-async def index_channel(client, message):
+async def index_channel(client, message):  # ✅ async def required
     chat_id = message.chat.id
-    try:
-        if not indexed.find_one({"chat_id": chat_id}):
-            indexed.insert_one({"chat_id": chat_id})
-            await message.reply("✅ Channel has been indexed for video monitoring.")
-        else:
-            await message.reply("ℹ️ This channel is already being monitored.")
-    except Exception as e:
-        print(f"MongoDB error: {e}")
-        await message.reply("❌ Failed to index this channel.")
-
+    if not indexed.find_one({"chat_id": chat_id}):
+        indexed.insert_one({"chat_id": chat_id})
+        await message.reply("✅ Channel has been indexed for video monitoring.")
+    else:
+        await message.reply("ℹ️ This channel is already being monitored.")
 
 try:
     if not indexed.find_one({"chat_id": chat_id}):
