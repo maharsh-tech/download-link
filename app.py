@@ -1,23 +1,22 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from flask import Flask, jsonify
-from pymongo import MongoClient
+from flask import Flask
 import os
 import hashlib
-import threading
-import asyncio
+from pymongo import MongoClient
 
-# ENV variables
+# Environment variables
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MONGO_URI = os.environ["MONGO_URI"]
 
-# Telegram bot
-bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
 # Flask app
 web = Flask(__name__)
+
+@web.route("/")
+def home():
+    return "Bot is running!"
 
 # MongoDB setup
 mongo = MongoClient(MONGO_URI)
@@ -25,65 +24,47 @@ db = mongo["redirector"]
 videos = db["videos"]
 config = db["config"]
 
-# Routes
-@web.route("/")
-def home():
-    return "Koyeb redirector + bot is running!"
+# Bot
+bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-@web.route("/config")
-def get_config():
-    current = config.find_one({}, sort=[("_id", -1)])
-    if current:
-        return jsonify({"base_url": current["base_url"]})
-    return jsonify({"base_url": ""})
-
-@web.route("/download/<slug>")
-def serve(slug):
-    video = videos.find_one({"slug": slug})
-    if not video:
-        return "Not found", 404
-    return jsonify({"file_id": video["file_id"]})
-
-# Helper
+# Slug generator
 def generate_slug(file_id):
     return hashlib.md5(file_id.encode()).hexdigest()[:6]
 
-# ✅ Manual indexing via reply
+# Handle /index replies
 @bot.on_message(filters.command("index") & filters.reply)
 async def manual_index(client: Client, message: Message):
-    replied = message.reply_to_message
+    print("📥 /index command received")
+    reply = message.reply_to_message
 
-    if not replied or not replied.video:
+    if not reply or not reply.video:
         await message.reply("❌ Please reply to a video to index it.")
         return
 
-    file_id = replied.video.file_id
-    caption = replied.caption or ""
+    file_id = reply.video.file_id
+    caption = reply.caption or ""
     slug = generate_slug(file_id)
 
-    if videos.find_one({"slug": slug}):
-        await message.reply("ℹ️ This video is already indexed.")
-        return
+    if not videos.find_one({"slug": slug}):
+        videos.insert_one({"slug": slug, "file_id": file_id, "caption": caption})
 
-    videos.insert_one({"slug": slug, "file_id": file_id, "caption": caption})
     base = config.find_one({}, sort=[("_id", -1)])
-    if base and "base_url" in base:
-        link = f"{base['base_url']}/file/{slug}.html"
-        await message.reply(f"✅ Video indexed!\n\n🔗 Link: {link}")
-    else:
-        await message.reply("✅ Video indexed but base_url is not set.")
+    link = f"{base['base_url']}/file/{slug}.html" if base and "base_url" in base else "Link unavailable"
+    await message.reply(f"✅ Video indexed!\n\n🔗 {link}")
+    print(f"✅ Indexed: {slug}")
 
-# ✅ Start bot thread
-def start_bot():
-    async def run_bot():
-        await bot.start()
-        print("✅ Bot started")
-        await asyncio.Event().wait()  # Keeps bot running
-
-    asyncio.run(run_bot())
-
-# ✅ Start everything
+# Start both Flask and bot
 if __name__ == "__main__":
-    print("🚀 Starting bot...")
-    threading.Thread(target=start_bot).start()
-    web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    import threading
+    import asyncio
+
+    def run_flask():
+        web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
+    def run_bot():
+        asyncio.run(bot.start())
+        print("✅ Bot started")
+        asyncio.run(bot.idle())
+
+    threading.Thread(target=run_bot).start()
+    run_flask()
