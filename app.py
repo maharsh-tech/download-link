@@ -22,6 +22,7 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["redirector"]
 videos = db["videos"]
 config = db["config"]
+indexed = db["indexed_channels"]
 
 # Routes
 @web.route("/")
@@ -59,6 +60,15 @@ async def handle_video(client, message):
     new_caption = f"{caption}\n\n📥 Download: {redirect_link}"
 
     await client.send_video(chat_id=message.chat.id, video=file_id, caption=new_caption)
+
+@bot.on_message(filters.command("index") & filters.channel)
+async def index_channel(client, message):
+    chat_id = message.chat.id
+    if not indexed.find_one({"chat_id": chat_id}):
+        indexed.insert_one({"chat_id": chat_id})
+        await message.reply("✅ Channel has been indexed for video monitoring.")
+    else:
+        await message.reply("ℹ️ This channel is already being monitored.")
 
 # Main runner
 async def main():
