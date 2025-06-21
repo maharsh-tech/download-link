@@ -1,4 +1,4 @@
-from pyrogram.idle import idle
+from pyrogram import idle
 import threading
 import asyncio
 from pyrogram import Client, filters
