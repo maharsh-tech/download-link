@@ -85,14 +85,10 @@ async def index_channel(client, message):
     else:
         await message.reply("ℹ️ This channel is already being monitored.")
 
-# === Threaded Startup for Flask + Bot ===
 def start_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(bot.start())      # Start the bot manually
+    bot.start()                 # ✅ No await needed
     print("✅ Bot started")
-    loop.run_until_complete(idle())           # Keep it alive (no signal handling)
-    print("🛑 Bot stopped")
+    asyncio.run(idle())        # ✅ idle is still a coroutine
 
 if __name__ == "__main__":
     threading.Thread(target=start_bot).start()
