@@ -85,6 +85,17 @@ async def index_channel(client, message):
     else:
         await message.reply("ℹ️ This channel is already being monitored.")
 
+try:
+    if not indexed.find_one({"chat_id": chat_id}):
+        indexed.insert_one({"chat_id": chat_id})
+        await message.reply("✅ Channel has been indexed for video monitoring.")
+    else:
+        await message.reply("ℹ️ This channel is already being monitored.")
+except Exception as e:
+    print(f"MongoDB error: {e}")
+    await message.reply("❌ Failed to index this channel.")
+
+
 def start_bot():
     bot.start()                 # ✅ No await needed
     print("✅ Bot started")
