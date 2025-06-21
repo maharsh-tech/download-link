@@ -85,9 +85,12 @@ async def index_channel(client, message):
 # === Threaded Startup for Flask + Bot ===
 # === Threaded Startup for Flask + Bot ===
 def start_bot():
+    import asyncio
+    asyncio.set_event_loop(asyncio.new_event_loop())  # ✅ Fix for thread
     print("✅ Bot starting...")
     bot.run()
 
 if __name__ == "__main__":
     threading.Thread(target=start_bot).start()
     web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
