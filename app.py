@@ -49,6 +49,10 @@ def generate_slug(file_id):
 
 @bot.on_message(filters.video & filters.channel)
 async def handle_video(client, message):
+    chat_id = message.chat.id
+    if not indexed.find_one({"chat_id": chat_id}):
+        return  # ❌ Channel not indexed — ignore
+
     file_id = message.video.file_id
     caption = message.caption or ""
     slug = generate_slug(file_id)
@@ -59,7 +63,7 @@ async def handle_video(client, message):
     redirect_link = f"https://yourname.pages.dev/file/{slug}.html"
     new_caption = f"{caption}\n\n📥 Download: {redirect_link}"
 
-    await client.send_video(chat_id=message.chat.id, video=file_id, caption=new_caption)
+    await client.send_video(chat_id=chat_id, video=file_id, caption=new_caption)
 
 @bot.on_message(filters.command("index") & filters.channel)
 async def index_channel(client, message):
