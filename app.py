@@ -12,7 +12,6 @@ API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MONGO_URI = os.environ["MONGO_URI"]
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 0))  # ✅ Your target channel ID
 
 # Telegram bot
 bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -25,7 +24,6 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["redirector"]
 videos = db["videos"]
 config = db["config"]
-indexed = db["indexed_channels"]
 
 # Routes
 @web.route("/")
@@ -46,55 +44,45 @@ def serve(slug):
         return "Not found", 404
     return jsonify({"file_id": video["file_id"]})
 
-# Helper function
+# Helper
 def generate_slug(file_id):
     return hashlib.md5(file_id.encode()).hexdigest()[:6]
 
-# ✅ Handle new video in channel
-@bot.on_message(filters.video & filters.channel)
-async def handle_video(client: Client, message: Message):
-    chat_id = message.chat.id
-    if not indexed.find_one({"chat_id": chat_id}):
-        print(f"❌ Ignoring video from unmonitored channel {chat_id}")
+# ✅ Manual indexing via reply
+@bot.on_message(filters.command("index") & filters.reply)
+async def manual_index(client: Client, message: Message):
+    replied = message.reply_to_message
+
+    if not replied or not replied.video:
+        await message.reply("❌ Please reply to a video to index it.")
         return
 
-    file_id = message.video.file_id
-    caption = message.caption or ""
+    file_id = replied.video.file_id
+    caption = replied.caption or ""
     slug = generate_slug(file_id)
 
-    if not videos.find_one({"slug": slug}):
-        videos.insert_one({"slug": slug, "file_id": file_id, "caption": caption})
-
-    base_url = config.find_one({}, sort=[("_id", -1)])
-    if not base_url or "base_url" not in base_url:
-        print("❌ Base URL not found in config")
+    if videos.find_one({"slug": slug}):
+        await message.reply("ℹ️ This video is already indexed.")
         return
 
-    redirect_link = f"{base_url['base_url']}/file/{slug}.html"
-    new_caption = f"{caption}\n\n📥 Download: {redirect_link}"
+    videos.insert_one({"slug": slug, "file_id": file_id, "caption": caption})
+    base = config.find_one({}, sort=[("_id", -1)])
+    if base and "base_url" in base:
+        link = f"{base['base_url']}/file/{slug}.html"
+        await message.reply(f"✅ Video indexed!\n\n🔗 Link: {link}")
+    else:
+        await message.reply("✅ Video indexed but base_url is not set.")
 
-    await client.send_video(chat_id=chat_id, video=file_id, caption=new_caption)
-    print(f"✅ Video processed and posted with link: {redirect_link}")
-
-# ✅ Bot start + send connection message
-async def run_bot():
-    await bot.start()
-    print("✅ Bot started")
-
-    # ✅ Send startup message
-    try:
-        await bot.send_message(CHANNEL_ID, "🤖 Bot has connected and is ready!")
-        print(f"✅ Connected message sent to {CHANNEL_ID}")
-    except Exception as e:
-        print(f"❌ Failed to send startup message: {e}")
-
-    await bot.idle()
-
-# ✅ Start bot in background thread
+# ✅ Start bot thread
 def start_bot():
+    async def run_bot():
+        await bot.start()
+        print("✅ Bot started")
+        await asyncio.Event().wait()  # Keeps bot running
+
     asyncio.run(run_bot())
 
-# ✅ Launch
+# ✅ Start everything
 if __name__ == "__main__":
     print("🚀 Starting bot...")
     threading.Thread(target=start_bot).start()
