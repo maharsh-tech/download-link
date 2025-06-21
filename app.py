@@ -1,11 +1,11 @@
 from pyrogram import Client, filters
-from flask import Flask, jsonify, redirect
+from flask import Flask, jsonify
 from pymongo import MongoClient
 import os
+import asyncio
 import hashlib
-import threading
 
-# Load env vars
+# ENV variables
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -14,15 +14,16 @@ MONGO_URI = os.environ["MONGO_URI"]
 # Telegram bot
 bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# MongoDB
+# Flask app
+web = Flask(__name__)
+
+# MongoDB setup
 mongo = MongoClient(MONGO_URI)
 db = mongo["redirector"]
 videos = db["videos"]
 config = db["config"]
 
-# Web server to keep Koyeb app alive
-web = Flask(__name__)
-
+# Routes
 @web.route("/")
 def home():
     return "Koyeb redirector + bot is running!"
@@ -35,13 +36,13 @@ def get_config():
     return jsonify({"base_url": ""})
 
 @web.route("/download/<slug>")
-def serve_download(slug):
+def serve(slug):
     video = videos.find_one({"slug": slug})
-    if video:
-        return jsonify({"file_id": video["file_id"]})
-    return "Not found", 404
+    if not video:
+        return "Not found", 404
+    return jsonify({"file_id": video["file_id"]})
 
-# Generate slug from file_id
+# Helper
 def generate_slug(file_id):
     return hashlib.md5(file_id.encode()).hexdigest()[:6]
 
@@ -52,25 +53,18 @@ async def handle_video(client, message):
     slug = generate_slug(file_id)
 
     if not videos.find_one({"slug": slug}):
-        videos.insert_one({
-            "slug": slug,
-            "file_id": file_id,
-            "caption": caption
-        })
+        videos.insert_one({"slug": slug, "file_id": file_id, "caption": caption})
 
     redirect_link = f"https://yourname.pages.dev/file/{slug}.html"
-    full_caption = f"{caption}\n\n📥 Download: {redirect_link}"
+    new_caption = f"{caption}\n\n📥 Download: {redirect_link}"
 
-    await client.send_video(
-        chat_id=message.chat.id,
-        video=file_id,
-        caption=full_caption
-    )
-    print(f"Reposted with slug: {slug}")
+    await client.send_video(chat_id=message.chat.id, video=file_id, caption=new_caption)
 
-def start_bot():
-    bot.run()
+# Main runner
+async def main():
+    await bot.start()
+    print("✅ Bot started")
+    web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
 
 if __name__ == "__main__":
-    threading.Thread(target=start_bot).start()
-    web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    asyncio.run(main())
