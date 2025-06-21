@@ -77,6 +77,7 @@ async def handle_video(client, message):
 # 🟦 Index Command
 @bot.on_message(filters.command("index") & filters.channel)
 async def index_channel(client, message):  # ✅ async def required
+    print("📥 Received /index command")    
     chat_id = message.chat.id
     if not indexed.find_one({"chat_id": chat_id}):
         indexed.insert_one({"chat_id": chat_id})
