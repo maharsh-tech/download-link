@@ -1,3 +1,6 @@
+from pyrogram.idle import idle
+import threading
+import asyncio
 from pyrogram import Client, filters
 from flask import Flask, jsonify
 from pymongo import MongoClient
@@ -83,14 +86,14 @@ async def index_channel(client, message):
         await message.reply("ℹ️ This channel is already being monitored.")
 
 # === Threaded Startup for Flask + Bot ===
-# === Threaded Startup for Flask + Bot ===
 def start_bot():
-    import asyncio
-    asyncio.set_event_loop(asyncio.new_event_loop())  # ✅ Fix for thread
-    print("✅ Bot starting...")
-    bot.run()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(bot.start())      # Start the bot manually
+    print("✅ Bot started")
+    loop.run_until_complete(idle())           # Keep it alive (no signal handling)
+    print("🛑 Bot stopped")
 
 if __name__ == "__main__":
     threading.Thread(target=start_bot).start()
     web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
-
