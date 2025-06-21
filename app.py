@@ -12,6 +12,7 @@ API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MONGO_URI = os.environ["MONGO_URI"]
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 0))
 
 # Telegram bot
 bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -75,28 +76,37 @@ async def handle_video(client: Client, message: Message):
     await client.send_video(chat_id=chat_id, video=file_id, caption=new_caption)
     print(f"✅ Video processed and posted with link: {redirect_link}")
 
-# ✅ Handle /index command
+# ✅ Handle /index command (only from allowed channel)
 @bot.on_message(filters.command("index") & filters.channel)
 async def index_channel(client: Client, message: Message):
     chat_id = message.chat.id
     print(f"📥 Received /index in channel: {chat_id}")
 
+    if chat_id != CHANNEL_ID:
+        print(f"❌ Unauthorized /index command from {chat_id}")
+        return
+
     if not indexed.find_one({"chat_id": chat_id}):
         indexed.insert_one({"chat_id": chat_id})
-        await client.send_message(chat_id, "✅ Channel has been indexed for video monitoring.")
+        await message.reply_text("✅ Channel has been indexed for video monitoring.")
         print(f"✅ Channel {chat_id} indexed")
     else:
-        await client.send_message(chat_id, "ℹ️ This channel is already being monitored.")
+        await message.reply_text("ℹ️ This channel is already being monitored.")
         print(f"ℹ️ Channel {chat_id} already indexed")
 
 # ✅ Run bot in background
 def start_bot():
-    asyncio.run(bot.start())
-    print("✅ Bot started")
-    asyncio.run(bot.idle())
+    async def runner():
+        await bot.start()
+        me = await bot.get_me()
+        print(f"✅ Bot started")
+        print(f"🔐 Auth completed as: @{me.username} ({me.id})")
+        await bot.idle()
+
+    asyncio.run(runner())
 
 # ✅ Start everything
 if __name__ == "__main__":
-    print("✅ Bot starting...")
+    print("🚀 Starting bot and server...")
     threading.Thread(target=start_bot).start()
     web.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
